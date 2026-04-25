@@ -62,7 +62,7 @@ function ScanWidget({ tokenAddress, tokenSym }: { tokenAddress: `0x${string}`; t
   const handleConfirm = async () => {
     await executeScan(tokenAddress, selectedTier);
     try {
-      const res = await fetch("/api/scan", {
+      const res = await fetch("http://localhost:3001/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tokenAddress, tier: selectedTier, scanId: Date.now() }),
