@@ -1,22 +1,25 @@
 import { useState, useEffect } from "react";
-import { WagmiProvider } from "wagmi";
+import { WagmiProvider, useAccount, useConnect, useDisconnect } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { wagmiConfig } from "./utils/wagmi";
-import { CONTRACTS, SCAN_TIERS, VOTE_FEE, EXPLORER_URL, FAUCET_URL } from "./utils/chain";
 import { useScan } from "./hooks/useScan";
 import { useVote, VoteSignal } from "./hooks/useVote";
+import {
+  SCAN_TIERS,
+  VOTE_FEE,
+  FAUCET_URL,
+  EXPLORER_URL,
+} from "./utils/chain";
 import "./App.css";
 
 const queryClient = new QueryClient();
 
-// ─── TOKEN LIST ───────────────────────────────────────────────────────────────
 const DEMO_TOKENS = [
-  { sym: "HELLO", name: "Hello Architect", icon: "🏛️", price: "$0.00",  change: 0,    address: "0x7079aF9303EA3461B776EABd6a55f57055B3CdeB" as `0x${string}` },
-  { sym: "ARCFI", name: "Arc Finance",     icon: "🏦", price: "$0.412", change: +14.2, address: "0x1111111111111111111111111111111111111111" as `0x${string}` },
-  { sym: "FLUX",  name: "FluxToken",       icon: "⚡", price: "$0.071", change: +7.4,  address: "0x2222222222222222222222222222222222222222" as `0x${string}` },
-  { sym: "STBL",  name: "Stablify",        icon: "💎", price: "$0.998", change: -0.1,  address: "0x3333333333333333333333333333333333333333" as `0x${string}` },
-  { sym: "NXUS",  name: "Nexus Proto",     icon: "🔮", price: "$1.240", change: +3.1,  address: "0x4444444444444444444444444444444444444444" as `0x${string}` },
+  { sym: "ARCD",  name: "ArcDoge",    icon: "🔶", price: "$0.412", change: 8.4,  address: "0x95Dcb61bc77806Ea1542FC9fb69a3DA4b3772e4f" as `0x${string}` },
+  { sym: "ARCX",  name: "ArcX",       icon: "🔷", price: "$1.204", change: -2.1, address: "0x1111111111111111111111111111111111111111" as `0x${string}` },
+  { sym: "NEON",  name: "NeonArc",    icon: "🟣", price: "$0.088", change: 14.7, address: "0x2222222222222222222222222222222222222222" as `0x${string}` },
+  { sym: "FLUX",  name: "ArcFlux",    icon: "🟡", price: "$0.331", change: -5.3, address: "0x3333333333333333333333333333333333333333" as `0x${string}` },
+  { sym: "NOVA",  name: "ArcNova",    icon: "🔴", price: "$2.017", change: 3.2,  address: "0x4444444444444444444444444444444444444444" as `0x${string}` },
 ];
 
 // ─── WALLET BUTTON ────────────────────────────────────────────────────────────
@@ -57,27 +60,17 @@ function ScanWidget({ tokenAddress, tokenSym }: { tokenAddress: `0x${string}`; t
   const { step, error, txHash, executeScan, reset } = useScan();
 
   const handleConfirm = async () => {
-    // Step 1: pay onchain
     await executeScan(tokenAddress, selectedTier);
-
-    // Step 2: fetch scan findings from backend
     try {
-      const res = await fetch("http://localhost:3001/api/scan", {
+      const res = await fetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tokenAddress,
-          tier: selectedTier,
-          scanId: Date.now(),
-        }),
+        body: JSON.stringify({ tokenAddress, tier: selectedTier, scanId: Date.now() }),
       });
       const data = await res.json();
       setScanFindings(data.findings || []);
-    } catch (err) {
-      console.error("Could not fetch scan results:", err);
-      setScanFindings([
-        { icon: "⚠️", text: "Backend not reachable. Start backend with: npm run dev" }
-      ]);
+    } catch {
+      setScanFindings([{ icon: "⚠️", text: "Backend not reachable." }]);
     }
   };
 
@@ -102,7 +95,6 @@ function ScanWidget({ tokenAddress, tokenSym }: { tokenAddress: `0x${string}`; t
         <p className="widget-desc">
           Unlock full token intelligence. Pay USDC on Arc Network for an instant security audit.
         </p>
-
         <div className="tier-list">
           {SCAN_TIERS.map((tier, i) => (
             <div
@@ -120,7 +112,6 @@ function ScanWidget({ tokenAddress, tokenSym }: { tokenAddress: `0x${string}`; t
             </div>
           ))}
         </div>
-
         <button
           className="btn-primary w-full"
           disabled={!isConnected}
@@ -138,7 +129,6 @@ function ScanWidget({ tokenAddress, tokenSym }: { tokenAddress: `0x${string}`; t
             <h2 className="modal-title">Confirm Scan</h2>
             <p className="modal-sub">Payment via Arc Network USDC</p>
 
-            {/* STEP 1 — confirm payment */}
             {step === "idle" || step === "checking_allowance" ? (
               <>
                 <div className="breakdown">
@@ -151,71 +141,37 @@ function ScanWidget({ tokenAddress, tokenSym }: { tokenAddress: `0x${string}`; t
                     <span>${(SCAN_TIERS[selectedTier].price + 0.001).toFixed(3)} USDC</span>
                   </div>
                 </div>
-                <button className="btn-primary w-full" onClick={handleConfirm}>
-                  CONFIRM & PAY
-                </button>
+                <button className="btn-primary w-full" onClick={handleConfirm}>CONFIRM & PAY</button>
                 <button className="btn-ghost w-full" onClick={() => setShowModal(false)}>Cancel</button>
               </>
-
-            // STEP 2 — success + findings
             ) : step === "done" ? (
               <div className="modal-success">
                 <div className="success-icon">✓</div>
                 <p style={{ fontWeight: 700, fontSize: 15 }}>Scan purchased onchain!</p>
                 {txHash && (
-                  <a
-                    href={`${EXPLORER_URL}/tx/${txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="tx-link"
-                  >
+                  <a href={`${EXPLORER_URL}/tx/${txHash}`} target="_blank" rel="noopener noreferrer" className="tx-link">
                     View on ArcScan Explorer →
                   </a>
                 )}
-
-                {/* SCAN FINDINGS */}
                 {scanFindings.length > 0 && (
                   <div style={{ width: "100%", marginTop: 16, textAlign: "left" }}>
-                    <div style={{
-                      fontSize: 10,
-                      letterSpacing: 2,
-                      color: "var(--arc)",
-                      marginBottom: 10,
-                      fontWeight: 700,
-                      borderBottom: "1px solid var(--border)",
-                      paddingBottom: 6,
-                    }}>
+                    <div style={{ fontSize: 10, letterSpacing: 2, color: "var(--arc)", marginBottom: 10, fontWeight: 700, borderBottom: "1px solid var(--border)", paddingBottom: 6 }}>
                       ⬡ SCAN FINDINGS — {SCAN_TIERS[selectedTier].name.toUpperCase()}
                     </div>
                     {scanFindings.map((f: any, i: number) => (
-                      <div key={i} style={{
-                        display: "flex",
-                        gap: 8,
-                        fontSize: 12,
-                        marginBottom: 8,
-                        padding: "6px 8px",
-                        background: "var(--dark)",
-                        border: "1px solid var(--border)",
-                      }}>
+                      <div key={i} style={{ display: "flex", gap: 8, fontSize: 12, marginBottom: 8, padding: "6px 8px", background: "var(--dark)", border: "1px solid var(--border)" }}>
                         <span style={{ flexShrink: 0 }}>{f.icon}</span>
                         <span style={{ color: "var(--text)", lineHeight: 1.5 }}>{f.text}</span>
                       </div>
                     ))}
                   </div>
                 )}
-
-                <button className="btn-primary w-full" style={{ marginTop: 12 }} onClick={() => setShowModal(false)}>
-                  Close
-                </button>
+                <button className="btn-primary w-full" style={{ marginTop: 12 }} onClick={() => setShowModal(false)}>Close</button>
               </div>
-
-            // STEP 3 — processing / error
             ) : (
               <div className="modal-processing">
                 {step !== "error" && <div className="spinner" />}
-                <p className={step === "error" ? "error-text" : "step-text"}>
-                  {stepLabel[step]}
-                </p>
+                <p className={step === "error" ? "error-text" : "step-text"}>{stepLabel[step]}</p>
               </div>
             )}
           </div>
@@ -241,11 +197,6 @@ function VoteWidget({ tokenAddress, tokenSym }: { tokenAddress: `0x${string}`; t
     { label: "🟡 Neutral — Unsure",          signal: 2, color: "var(--gold)" },
   ];
 
-  const handleVote = async () => {
-    if (selected === null) return;
-    await castVote(selected);
-  };
-
   return (
     <>
       <div className="widget vote-widget">
@@ -254,7 +205,6 @@ function VoteWidget({ tokenAddress, tokenSym }: { tokenAddress: `0x${string}`; t
           <span className="vote-cost">{VOTE_FEE} USDC / vote</span>
         </div>
         <p className="widget-desc">Cast your onchain signal. Recorded via Arc USDC.</p>
-
         <div className="vote-bars">
           {[
             { label: "🟢 Bullish", count: votes.bullish, color: "var(--green)" },
@@ -271,18 +221,13 @@ function VoteWidget({ tokenAddress, tokenSym }: { tokenAddress: `0x${string}`; t
           ))}
         </div>
         <p className="vote-total">{votes.total} votes cast</p>
-
         {alreadyVoted ? (
           <button className="btn-primary w-full" disabled>ALREADY VOTED ✓</button>
         ) : (
           <>
             <div className="vote-options">
               {signals.map((s) => (
-                <div
-                  key={s.signal}
-                  className={`vote-option ${selected === s.signal ? "selected" : ""}`}
-                  onClick={() => setSelected(s.signal)}
-                >
+                <div key={s.signal} className={`vote-option ${selected === s.signal ? "selected" : ""}`} onClick={() => setSelected(s.signal)}>
                   <div className="vote-radio" style={selected === s.signal ? { borderColor: s.color, background: s.color } : {}} />
                   <span>{s.label}</span>
                 </div>
@@ -305,21 +250,15 @@ function VoteWidget({ tokenAddress, tokenSym }: { tokenAddress: `0x${string}`; t
             <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
             <h2 className="modal-title">Cast Your Vote</h2>
             <p className="modal-sub">Onchain vote · Arc Network USDC</p>
-
             {step === "idle" ? (
               <>
                 <div className="breakdown">
                   <div className="breakdown-row"><span>Token</span><span>{tokenSym}</span></div>
-                  <div className="breakdown-row">
-                    <span>Signal</span>
-                    <span style={{ color: "var(--green)" }}>
-                      {signals.find(s => s.signal === selected)?.label}
-                    </span>
-                  </div>
+                  <div className="breakdown-row"><span>Signal</span><span style={{ color: "var(--green)" }}>{signals.find(s => s.signal === selected)?.label}</span></div>
                   <div className="breakdown-row"><span>Network</span><span style={{ color: "var(--arc)" }}>Arc Testnet</span></div>
                   <div className="breakdown-row total"><span>Total</span><span>0.251 USDC</span></div>
                 </div>
-                <button className="btn-primary w-full" onClick={handleVote}>CAST VOTE ONCHAIN</button>
+                <button className="btn-primary w-full" onClick={() => castVote(selected!)}>CAST VOTE ONCHAIN</button>
                 <button className="btn-ghost w-full" onClick={() => setShowModal(false)}>Cancel</button>
               </>
             ) : step === "done" ? (
@@ -327,9 +266,7 @@ function VoteWidget({ tokenAddress, tokenSym }: { tokenAddress: `0x${string}`; t
                 <div className="success-icon">✓</div>
                 <p style={{ fontWeight: 700 }}>Vote recorded onchain!</p>
                 {txHash && (
-                  <a href={`${EXPLORER_URL}/tx/${txHash}`} target="_blank" rel="noopener noreferrer" className="tx-link">
-                    View on ArcScan Explorer →
-                  </a>
+                  <a href={`${EXPLORER_URL}/tx/${txHash}`} target="_blank" rel="noopener noreferrer" className="tx-link">View on ArcScan Explorer →</a>
                 )}
                 <button className="btn-primary w-full" onClick={() => setShowModal(false)}>Close</button>
               </div>
@@ -337,10 +274,10 @@ function VoteWidget({ tokenAddress, tokenSym }: { tokenAddress: `0x${string}`; t
               <div className="modal-processing">
                 {step !== "error" && <div className="spinner" />}
                 <p className={step === "error" ? "error-text" : "step-text"}>
-                  {step === "approving"  && "Approve USDC in wallet..."}
-                  {step === "voting"     && "Confirm vote in wallet..."}
+                  {step === "approving" && "Approve USDC in wallet..."}
+                  {step === "voting" && "Confirm vote in wallet..."}
                   {step === "confirming" && "Recording vote on Arc Network..."}
-                  {step === "error"      && `Error: ${error}`}
+                  {step === "error" && `Error: ${error}`}
                 </p>
               </div>
             )}
@@ -351,10 +288,83 @@ function VoteWidget({ tokenAddress, tokenSym }: { tokenAddress: `0x${string}`; t
   );
 }
 
+// ─── CHART SVG ────────────────────────────────────────────────────────────────
+function ChartSVG() {
+  const [points, setPoints] = useState(generatePoints());
+  function generatePoints() {
+    const pts: [number, number][] = [];
+    let y = 140;
+    for (let x = 0; x <= 800; x += 16) {
+      y += (Math.random() - 0.46) * 18;
+      y = Math.max(30, Math.min(250, y));
+      pts.push([x, y]);
+    }
+    return pts;
+  }
+  useEffect(() => {
+    const iv = setInterval(() => setPoints(generatePoints()), 4000);
+    return () => clearInterval(iv);
+  }, []);
+  const line = points.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x},${y}`).join(" ");
+  const area = line + " L800,280 L0,280 Z";
+  return (
+    <svg viewBox="0 0 800 280" style={{ width: "100%", height: "100%" }} preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#00E5C3" stopOpacity="0.15" />
+          <stop offset="100%" stopColor="#00E5C3" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {[70, 140, 210].map(y => (
+        <line key={y} x1="0" y1={y} x2="800" y2={y} stroke="rgba(0,229,195,0.06)" strokeWidth="1" />
+      ))}
+      <path d={area} fill="url(#g)" />
+      <path d={line} fill="none" stroke="#00E5C3" strokeWidth="2" />
+    </svg>
+  );
+}
+
+// ─── LIVE TX FEED ─────────────────────────────────────────────────────────────
+function LiveTxFeed({ tokenSym }: { tokenSym: string }) {
+  const [txs, setTxs] = useState(generateTxs(8));
+  function generateTxs(count: number) {
+    return Array.from({ length: count }, (_, i) => ({
+      id: Math.random(),
+      time: i === 0 ? "just now" : `${i * 15}s ago`,
+      hash: `0x${Math.random().toString(16).substr(2, 4)}...${Math.random().toString(16).substr(2, 4)}`,
+      type: Math.random() > 0.45 ? "buy" : "sell",
+      amount: Math.floor(Math.random() * 40000 + 500).toLocaleString(),
+      price: `$${(0.40 + Math.random() * 0.02).toFixed(3)}`,
+      total: `$${(Math.random() * 15000 + 200).toFixed(2)}`,
+    }));
+  }
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setTxs(prev => [generateTxs(1)[0], ...prev.slice(0, 14)]);
+    }, 3000);
+    return () => clearInterval(iv);
+  }, [tokenSym]);
+  return (
+    <div>
+      {txs.map(tx => (
+        <div key={tx.id} className={`tx-row ${tx.type}`}>
+          <span className="tx-time">{tx.time}</span>
+          <span className="tx-hash">{tx.hash}</span>
+          <span className={`tx-type ${tx.type}`}>{tx.type.toUpperCase()}</span>
+          <span>{tx.amount}</span>
+          <span>{tx.price}</span>
+          <span>{tx.total}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 function ArcScanApp() {
   const [activeToken, setActiveToken] = useState(DEMO_TOKENS[0]);
   const [searchVal, setSearchVal] = useState("");
+  const [mobileTab, setMobileTab] = useState<"tokens" | "chart" | "scan">("chart");
 
   return (
     <div className="app-shell">
@@ -367,7 +377,7 @@ function ArcScanApp() {
         <div className="nav-search">
           <span>⌕</span>
           <input
-            placeholder="Search token, contract address..."
+            placeholder="Search token or contract address..."
             value={searchVal}
             onChange={(e) => setSearchVal(e.target.value)}
           />
@@ -395,17 +405,30 @@ function ArcScanApp() {
         </div>
       </div>
 
+      {/* MOBILE TABS */}
+      <div className="mobile-tabs">
+        <button className={`mobile-tab-btn ${mobileTab === "tokens" ? "active" : ""}`} onClick={() => setMobileTab("tokens")}>
+          🔥 TOKENS
+        </button>
+        <button className={`mobile-tab-btn ${mobileTab === "chart" ? "active" : ""}`} onClick={() => setMobileTab("chart")}>
+          📈 CHART
+        </button>
+        <button className={`mobile-tab-btn ${mobileTab === "scan" ? "active" : ""}`} onClick={() => setMobileTab("scan")}>
+          ⬡ SCAN & VOTE
+        </button>
+      </div>
+
       {/* BODY */}
       <div className="app-body">
         {/* SIDEBAR */}
-        <aside className="sidebar">
+        <aside className="sidebar" data-hidden={mobileTab !== "tokens" ? "true" : "false"}>
           <div className="sidebar-section">
             <div className="sidebar-label">🔥 Hot Tokens</div>
             {DEMO_TOKENS.map((t) => (
               <div
                 key={t.sym}
                 className={`token-row ${activeToken.sym === t.sym ? "active" : ""}`}
-                onClick={() => setActiveToken(t)}
+                onClick={() => { setActiveToken(t); setMobileTab("chart"); }}
               >
                 <span className="token-row-icon">{t.icon}</span>
                 <div className="token-row-info">
@@ -429,7 +452,7 @@ function ArcScanApp() {
         </aside>
 
         {/* MAIN */}
-        <main className="main-area">
+        <main className="main-area" data-hidden={mobileTab !== "chart" ? "true" : "false"}>
           <div className="token-header">
             <div className="token-top-row">
               <div className="token-logo">{activeToken.icon}</div>
@@ -455,7 +478,7 @@ function ArcScanApp() {
                 { label: "24h Volume", val: "$4.1M" },
                 { label: "Liquidity",  val: "$2.8M", color: "var(--green)" },
                 { label: "Holders",    val: "8,441" },
-                { label: "24h Txns",   val: "B:312 / S:188" },
+                { label: "24h Txns",   val: "312/188" },
               ].map((s) => (
                 <div key={s.label} className="stat-cell">
                   <div className="stat-label">{s.label}</div>
@@ -484,7 +507,7 @@ function ArcScanApp() {
         </main>
 
         {/* RIGHT PANEL */}
-        <aside className="right-panel">
+        <aside className="right-panel" data-hidden={mobileTab !== "scan" ? "true" : "false"}>
           <ScanWidget tokenAddress={activeToken.address} tokenSym={activeToken.sym} />
           <VoteWidget tokenAddress={activeToken.address} tokenSym={activeToken.sym} />
           <div className="widget trust-widget">
@@ -499,12 +522,12 @@ function ArcScanApp() {
             </div>
             <div className="trust-items">
               {[
-                ["Contract Verified", "✓ YES",   "ok"],
-                ["Liquidity Locked",  "✓ 180d",  "ok"],
-                ["Mint Function",     "✓ NONE",  "ok"],
-                ["Renounced",         "⚠ NO",    "warn"],
-                ["Honeypot",          "✓ SAFE",  "ok"],
-                ["Tax (Buy/Sell)",    "2% / 3%", "warn"],
+                ["Contract Verified", "✓ YES",  "ok"],
+                ["Liquidity Locked",  "✓ 180d", "ok"],
+                ["Mint Function",     "✓ NONE", "ok"],
+                ["Renounced",         "⚠ NO",   "warn"],
+                ["Honeypot",          "✓ SAFE", "ok"],
+                ["Tax (Buy/Sell)",    "2% / 3%","warn"],
               ].map(([k, v, cls]) => (
                 <div key={k} className="trust-row">
                   <span className="trust-key">{k}</span>
@@ -519,86 +542,12 @@ function ArcScanApp() {
   );
 }
 
-// ─── CHART SVG ────────────────────────────────────────────────────────────────
-function ChartSVG() {
-  const [points, setPoints] = useState(generatePoints());
-  function generatePoints() {
-    const pts: [number, number][] = [];
-    let y = 140;
-    for (let x = 0; x <= 800; x += 16) {
-      y += (Math.random() - 0.46) * 18;
-      y = Math.max(30, Math.min(250, y));
-      pts.push([x, y]);
-    }
-    return pts;
-  }
-  useEffect(() => {
-    const iv = setInterval(() => setPoints(generatePoints()), 4000);
-    return () => clearInterval(iv);
-  }, []);
-  const line = points.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x},${y}`).join(" ");
-  const area = line + " L800,280 L0,280 Z";
-  return (
-    <svg viewBox="0 0 800 280" style={{ width: "100%", height: "100%" }} preserveAspectRatio="none">
-      <defs>
-        <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"   stopColor="#00E5C3" stopOpacity="0.15" />
-          <stop offset="100%" stopColor="#00E5C3" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {[70, 140, 210].map(y => (
-        <line key={y} x1="0" y1={y} x2="800" y2={y} stroke="rgba(0,229,195,0.06)" strokeWidth="1" />
-      ))}
-      <path d={area} fill="url(#g)" />
-      <path d={line} fill="none" stroke="#00E5C3" strokeWidth="2" />
-    </svg>
-  );
-}
-
-// ─── LIVE TX FEED ─────────────────────────────────────────────────────────────
-function LiveTxFeed({ tokenSym }: { tokenSym: string }) {
-  const [txs, setTxs] = useState(generateTxs(8));
-  function generateTxs(count: number) {
-    return Array.from({ length: count }, (_, i) => ({
-      id: Math.random(),
-      time: i === 0 ? "just now" : `${i * 15}s ago`,
-      hash: `0x${Math.random().toString(16).substr(2, 4)}...${Math.random().toString(16).substr(2, 4)}`,
-      type: Math.random() > 0.45 ? "buy" : "sell",
-      amount: Math.floor(Math.random() * 40000 + 500).toLocaleString(),
-      price: `$${(0.40 + Math.random() * 0.02).toFixed(3)}`,
-      total: `$${(Math.random() * 15000 + 200).toFixed(2)}`,
-      maker: `0x${Math.random().toString(16).substr(2, 4)}...`,
-    }));
-  }
-  useEffect(() => {
-    const iv = setInterval(() => {
-      setTxs(prev => [generateTxs(1)[0], ...prev.slice(0, 14)]);
-    }, 3000);
-    return () => clearInterval(iv);
-  }, [tokenSym]);
-  return (
-    <div>
-      {txs.map(tx => (
-        <div key={tx.id} className={`tx-row ${tx.type}`}>
-          <span className="tx-time">{tx.time}</span>
-          <span className="tx-hash">{tx.hash}</span>
-          <span className={`tx-type ${tx.type}`}>{tx.type.toUpperCase()}</span>
-          <span>{tx.amount}</span>
-          <span>{tx.price}</span>
-          <span>{tx.total}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function App() {
   return (
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         <ArcScanApp />
-      </QueryClientProvider>
+       </QueryClientProvider>
     </WagmiProvider>
   );
 }
