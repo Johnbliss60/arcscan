@@ -43,7 +43,7 @@ function ScanWidget({ tokenAddress, tokenSym }: { tokenAddress: `0x${string}`; t
   const handleConfirm = async () => {
     await executeScan(tokenAddress, selectedTier);
     try {
-      const res = await fetch("http://http://localhost:5173//api/scan", {
+      const res = await fetch("https://your-backend.vercel.app/api/scan", { 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tokenAddress, tier: selectedTier, scanId: Date.now() }),
