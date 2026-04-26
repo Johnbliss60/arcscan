@@ -18,6 +18,7 @@ app.use(cors({
   ],
   methods: ["GET", "POST"],
 }));
+
 app.use(express.json());
 
 // ─── ARC TESTNET CLIENT ───────────────────────────────────────────────────────
