@@ -9,7 +9,15 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "https://arcscan-git-ssh-newmans-projects-6d3236d5.vercel.app",
+    /\.vercel\.app$/
+  ],
+  methods: ["GET", "POST"],
+}));
 app.use(express.json());
 
 // ─── ARC TESTNET CLIENT ───────────────────────────────────────────────────────
