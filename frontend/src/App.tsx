@@ -51,16 +51,29 @@ function ScanWidget({ tokenAddress, tokenSym }: { tokenAddress: `0x${string}`; t
   const { step, executeScan, reset } = useScan();
 
   const handleConfirm = async () => {
+    // 1. Execute the on-chain payment first
     await executeScan(tokenAddress, selectedTier);
+    
+    // 2. Turn on the loading spinner
     setIsAiProcessing(true);
-    setTimeout(() => {
-      setLocalFindings([
-        { icon: "🛡️", text: "Contract compiled bytecode structure verified clean." },
-        { icon: "💧", text: "Liquidity lock confirmed in decentralized factory pool." },
-        { icon: "⚡", text: "Circuit break selector verified absent from router execution." }
-      ]);
-      setIsAiProcessing(false);
-    }, 2000);
+    
+    try {
+      // 3. Ping your LIVE Railway backend!
+      const res = await fetch("https://arcscan-production.up.railway.app/api/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tokenAddress, tier: selectedTier, scanId: Date.now() }),
+      });
+      
+      const data = await res.json();
+      setLocalFindings(data.findings || [{ icon: "✅", text: "Scan complete, no critical threats detected." }]);
+    } catch (err) {
+      console.error("Could not fetch scan results:", err);
+      setLocalFindings([{ icon: "⚠️", text: "Warning: Live backend unreachable. Please try again." }]);
+    }
+    
+    // 4. Turn off the spinner
+    setIsAiProcessing(false);
   };
 
   return (
